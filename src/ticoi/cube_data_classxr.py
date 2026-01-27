@@ -1057,7 +1057,7 @@ class CubeDataClass:
         :param visual: [bool] [default is False] --- Return additional information (sensor and source) for future plots
         :param output_format [str] [default is np] --- Format of the output data (np for numpy or df for pandas dataframe)
 
-        :return data: [list | None] --- A list 2 elements : the first one is np.ndarray with the observed
+        :return data: [list | None] --- A list 2 elements : the first one is np.ndarray with the observed dates, the second are the velocity values (vx, vy)
         :return mean: [list | None] --- A list with average vx and vy if solver=LSMR_ini, but the regularization do not require an apriori on the acceleration
         :return dates_range: [list | None] --- Dates between which the displacements will be inverted
         :return regu: [np array | Nothing] --- If flag is not None, regularization method to be used for each pixel
@@ -1143,9 +1143,8 @@ class CubeDataClass:
         self,
         delete_outliers: str | float,
         flag: xr.Dataset | None = None,
-        slope: xr.Dataset | None = None,
-        aspect: xr.Dataset | None = None,
         direction: xr.Dataset | None = None,
+        obs_filt: xr.Dataset | None = None,
         **kwargs,
     ):
         """
@@ -1167,9 +1166,8 @@ class CubeDataClass:
                     self.ds["vx"],
                     self.ds["vy"],
                     filt_method=delete_outliers,
-                    slope=slope,
-                    aspect=aspect,
                     direction=direction,
+                    obs_filt=obs_filt,
                     axis=axis,
                     **kwargs,
                 )
@@ -1187,7 +1185,7 @@ class CubeDataClass:
 
             self.ds = self.ds.persist()
 
-        elif isinstance(delete_outliers, dict):
+        elif isinstance(delete_outliers, dict):  # call the previous condition
             for method in delete_outliers.keys():
                 if method == "error":
                     if delete_outliers["error"] is None:
@@ -1223,8 +1221,6 @@ class CubeDataClass:
                         self.delete_outliers("vvc_angle", flag)
                     else:
                         self.delete_outliers("vvc_angle", flag, **delete_outliers["vvc_angle"])
-                elif method == "topo_angle":
-                    self.delete_outliers("topo_angle", flag, slope=slope, aspect=aspect)
                 elif method == "flow_angle":
                     self.delete_outliers("flow_angle", flag, direction=direction)
                 elif method == "mz_score":
@@ -1234,7 +1230,7 @@ class CubeDataClass:
                         self.delete_outliers("mz_score", flag, z_thres=delete_outliers["mz_score"])
                 else:
                     raise ValueError(
-                        "Filtering method should be either 'median_angle', 'vvc_angle', 'topo_angle', 'z_score','mz_score', 'magnitude', 'median_magnitude' or 'error'."
+                        "Filtering method should be either 'median_angle', 'vvc_angle', 'z_score','mz_score', 'magnitude', 'median_magnitude' or 'error'."
                     )
         else:
             raise ValueError("delete_outliers must be a int, a string or a dict, not {type(delete_outliers)}")
@@ -1535,22 +1531,14 @@ class CubeDataClass:
         start = time.time()
 
         if delete_outliers is not None:  # remove outliers beforehand
-            slope, aspect, direction = None, None, None
-            if (isinstance(delete_outliers, str) and delete_outliers == "topo_angle") or (
-                isinstance(delete_outliers, dict) and "topo_angle" in delete_outliers.keys()
-            ):
-                if isinstance(dem_file, str):
-                    slope, aspect = self.compute_slo_asp(dem_file=dem_file)
-                else:
-                    raise ValueError("dem_file must be given if delete_outliers is 'topo_angle'")
-
-            elif (isinstance(delete_outliers, str) and delete_outliers == "flow_angle") or (
+            direction = None
+            if (isinstance(delete_outliers, str) and delete_outliers == "flow_angle") or (
                 isinstance(delete_outliers, dict) and "flow_angle" in delete_outliers.keys()
             ):
                 direction = self.compute_flow_direction(vx_file=None, vy_file=None)
-            self.delete_outliers(
-                delete_outliers=delete_outliers, flag=None, slope=slope, aspect=aspect, direction=direction
-            )
+
+            self.delete_outliers(delete_outliers=delete_outliers, flag=None, direction=direction)
+
             if verbose:
                 print(f"[Data filtering] Delete outlier took {round((time.time() - start), 1)} s")
 
@@ -1601,7 +1589,9 @@ class CubeDataClass:
         else:
             obs_filt = None
 
-        if "moving_mz_score" in delete_outliers.keys():
+        if (isinstance(delete_outliers, str) and delete_outliers == "moving_mz_score") or (
+            isinstance(delete_outliers, dict) and "moving_mz_score" in delete_outliers.keys()
+        ):
             self.delete_outliers(delete_outliers=delete_outliers, flag=None, direction=direction, obs_filt=obs_filt)
 
         # Unify the observations to displacement to provide displacement values during inversion

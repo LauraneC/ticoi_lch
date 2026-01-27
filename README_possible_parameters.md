@@ -25,6 +25,7 @@ metrics. It has to be large enough to have a good signal-to-noise ratio. The opt
 - 'median_angle': Remove the observation if its direction is angle_thres away from the direction of the median vector
 - 'z_score':  Remove the observations if it is 3 time the standard deviation from the average of observations over this
   pixel
+- 'error': Remove the observations if its error variable is larger than a given threshold
 - 'vvc_angle':  Combine median_angle and z_score. If the Velocity Vector Coherence is lower than a given threshold,
   outliers are filtered out according to the zscore, else to the median angle filter, i.e. pixels are filtered out if
   the angle with the observation is angle_thres away from the median vector
@@ -32,7 +33,8 @@ metrics. It has to be large enough to have a good signal-to-noise ratio. The opt
 - 'median_magnitude':   Remove the observation if it median_magnitude_thres times bigger than the mean velocity at
   pixel, or if it is
   1/median_magnitude_thres times smaller than the mean velocity at pixel
-- 'error': Remove the observations if its error variable is larger than a given threshold
+
+'delete_outliers' could be a dictionary with the names of the filters and the thresholds to use, for example {"filter_name":treshold}, or just the name of the filter. In this last case, the default threshold is used.
 
 See the comparison of mz_score and median_angle in Appendix B
 of [Charrier et al. 2025](https://egusphere.copernicus.org/preprints/2025/egusphere-2024-3409/)

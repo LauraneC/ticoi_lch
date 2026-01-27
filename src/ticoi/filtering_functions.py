@@ -14,6 +14,7 @@ from scipy.ndimage import gaussian_filter1d, median_filter
 from scipy.signal import savgol_filter
 from sklearn.decomposition import FastICA
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from numba import njit, prange
 
 from typing import Literal
 
@@ -32,6 +33,7 @@ FiltMethod = Literal[
     "median_magnitude",
     "error",
     "flow_angle",
+    "moving_mz_score",
 ]
 
 
@@ -365,24 +367,42 @@ def mz_score_filt(obs: da.array, mz_thres: int = 3.5, axis: int = 2):
     return inlier_flag
 
 
-def moving_mz_score_filt(obs: da.array,obs_filt:da.array, mz_thres: int = 3.5, axis: int = 2):
-    """
-    Remove the observations if it is 3.5 time the MAD from the median of observations over this pixel
-    :param obs: cube data to filter
-    :param mz_thres: a threshold to remove observations, if the absolute zscore is higher than this threshold (default is 3)
-    :param axis: axis on which to perform the zscore computation
-    :return: boolean mask
-    """
+@njit(parallel=True, fastmath=True)
+def moving_mz_score_filt(
+    obs,
+    ref,
+    mz_thres,
+    axis,
+    window,
+):
+    half = window // 2
+    out = np.ones(obs.shape, dtype=np.bool_)
 
-    med = np.nanmedian(obs, axis=axis, keepdims=True)
-    mad = np.nanmedian(abs(obs - med), axis=axis, keepdims=True)
+    # Move axis to last
+    obs = np.moveaxis(obs, axis, -1)
+    ref = np.moveaxis(ref, axis, -1)
+    out = np.moveaxis(out, axis, -1)
 
-    # mad = median_abs_deviation(obs, axis=axis)
+    T = obs.shape[-1]
 
-    mz_scores = 0.6745 * (obs - med) / mad
-    inlier_flag = np.abs(mz_scores) < mz_thres
+    for t in prange(T):
+        lo = max(0, t - half)
+        hi = min(T, t + half + 1)
 
-    return inlier_flag
+        ref_win = ref[..., lo:hi]
+
+        med = np.nanmedian(ref_win, axis=-1)
+        mad = np.nanmedian(np.abs(ref_win - med[..., None]), axis=-1)
+
+        for idx in np.ndindex(med.shape):
+            if mad[idx] == 0 or np.isnan(mad[idx]):
+                out[idx + (t,)] = False
+            else:
+                mz = 0.6745 * (obs[idx + (t,)] - med[idx]) / mad[idx]
+                out[idx + (t,)] = abs(mz) < mz_thres
+
+    return np.moveaxis(out, -1, axis)
+
 
 def NVVC_angle_filt(
     obs_cpx: np.array, vvc_thres: float = 0.1, angle_thres: int = 45, z_thres: int = 2, axis: int = 2
@@ -559,6 +579,7 @@ def flow_angle_filt(
 
     return xr.DataArray(inlier_flag, dims=obs_cpx.dims, coords=obs_cpx.coords)
 
+
 def dask_filt_warpper(
     da_vx: xr.DataArray,
     da_vy: xr.DataArray,
@@ -625,11 +646,19 @@ def dask_filt_warpper(
         inlier_mask = np.logical_and(inlier_mask_vx, inlier_mask_vy)
 
     elif filt_method == "moving_mz_score":
-        inlier_mask_vx = da_vx.data.map_blocks(
-            moving_mz_score_filt, obs_filt=obs_filt["vx_filt"], mz_thres=mz_thres, axis=axis, dtype=da_vx.dtype
+        window = 30
+        inlier_mask_vx = da_vx.data.map_overlap(
+            moving_mz_score_filt,
+            obs_filt["vx_filt"].data,
+            mz_thres,
+            axis,
+            window,
+            depth={axis: window // 2},
+            boundary="reflect",
+            dtype=bool,
         )
-        inlier_mask_vy = da_vy.data.map_blocks(
-            moving_mz_score_filt, obs_filt=obs_filt["vy_filt"], mz_thres=mz_thres, axis=axis, dtype=da_vy.dtype
+        inlier_mask_vy = da_vy.data.map_overlap(
+            moving_mz_score_filt, obs_filt=obs_filt["vy_filt"].data, mz_thres=mz_thres, axis=axis, dtype=da_vy.dtype
         )
         inlier_mask = np.logical_and(inlier_mask_vx, inlier_mask_vy)
 
@@ -663,7 +692,7 @@ def dask_filt_warpper(
         )
     else:
         raise ValueError(
-            "Filtering method should be either 'median_angle', 'vvc_angle','vvc_angle_mzscore', 'z_score', 'm_zscore', 'magnitude', 'median_magnitude', 'error', 'flow_angle'."
+            "Filtering method should be either 'median_angle', 'vvc_angle','vvc_angle_mzscore', 'z_score', 'm_zscore', 'magnitude', 'median_magnitude', 'error', 'flow_angle', 'moving_mz_score'."
         )
 
     return inlier_mask.compute()

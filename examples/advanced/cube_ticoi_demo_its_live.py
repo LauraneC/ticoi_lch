@@ -27,6 +27,7 @@ from tqdm import tqdm
 from ticoi.core import process, process_blocks_refine, save_cube_parameters
 from ticoi.cube_data_classxr import CubeDataClass
 from ticoi.cube_writer import CubeResultsWriter
+from ticoi.utils import find_granule_by_point
 
 warnings.filterwarnings("ignore")
 
@@ -54,7 +55,6 @@ save_mean_velocity = False  # Save a .tiff file with the mean resulting velociti
 ## ------------------------------ Data selection --------------------------- ##
 # List of the paths where the data cubes are stored
 # List of the paths where the data cubes are stored
-cube_name = "http://its-live-data.s3.amazonaws.com/datacubes/v2/N60W130/ITS_LIVE_vel_EPSG3413_G0120_X-3250000_Y150000.zarr"  # Path where the Sentinel-2 IGE cubes are stored
 path_save = "to_file"  # Path where to stored the results
 result_fn = "Lowell_example"  # Name of the netCDF file to be created
 subset = [-138.28962881999922274, -138.279, 60.25934205396930565, 60.261]
@@ -122,6 +122,8 @@ inversion_kwargs = {
     "verbose": False,  # Print information throughout TICOI processing
 }
 
+cube_name = find_granule_by_point([subset[0], subset[2]])
+print(cube_name)
 ## ----------------------- Parallelization parameters ---------------------- ##
 nb_cpu = 12  # Number of CPU to be used for parallelization
 block_size = 0.5  # Maximum sub-block size (in GB) for the 'block_process' TICOI processing method
