@@ -1601,7 +1601,6 @@ class CubeDataClass:
         if obs_filt is not None:
             obs_filt.load()
         self.ds = self.ds.load()  # Crash memory without loading
-        # persist() is particularly useful when using a distributed cluster because the data will be loaded into distributed memory across your machines and be much faster to use than reading repeatedly from disk.
 
         return obs_filt, flag
 
@@ -1817,7 +1816,7 @@ class CubeDataClass:
         """
         Merge another cube to the present one. It must have been aligned first (using align_cube).
         It will merge the second cube on the same extent as the new one.
-
+        It will merge the second cube on the same extent as the new one.
         :param cube: [cube_data_class] --- The cube to be merged to self
         """
 
